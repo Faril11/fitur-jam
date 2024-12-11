@@ -21,10 +21,13 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Edit
+import java.time.LocalDate
+import java.time.LocalDateTime
 import java.time.LocalTime
 import java.time.format.DateTimeFormatter
+import android.app.DatePickerDialog
+import androidx.compose.ui.platform.LocalContext
+import java.util.Calendar
 
 class MainActivity : ComponentActivity() {
     @RequiresApi(Build.VERSION_CODES.O)
@@ -39,11 +42,12 @@ class MainActivity : ComponentActivity() {
 @RequiresApi(Build.VERSION_CODES.O)
 @Composable
 fun TeacherScheduleScreen() {
-    // State untuk menyimpan waktu yang dipilih (dalam bentuk String)
+    var selectedDate by remember { mutableStateOf<LocalDate?>(null) }
     var selectedTime by remember { mutableStateOf<LocalTime?>(null) }
+    var showDatePicker by remember { mutableStateOf(false) }
     var showTimePicker by remember { mutableStateOf(false) }
-    var timeList = remember { mutableStateListOf<String>() } // Menyimpan waktu sebagai String
-    var editingTimeIndex by remember { mutableStateOf<Int?>(null) }
+    var scheduleList = remember { mutableStateListOf<String>() }
+    var editingIndex by remember { mutableStateOf<Int?>(null) }
 
     Column(
         modifier = Modifier
@@ -51,7 +55,6 @@ fun TeacherScheduleScreen() {
             .padding(16.dp),
         horizontalAlignment = Alignment.CenterHorizontally
     ) {
-        // Header
         Text(
             text = "Teling",
             color = Color.White,
@@ -66,7 +69,6 @@ fun TeacherScheduleScreen() {
 
         Spacer(modifier = Modifier.height(16.dp))
 
-        // Judul jadwal
         Text(
             text = "Masukkan Jadwal Bimbingan",
             fontSize = 18.sp,
@@ -76,63 +78,83 @@ fun TeacherScheduleScreen() {
 
         Spacer(modifier = Modifier.height(16.dp))
 
-        // Kolom input untuk mengisi jadwal
         Button(
-            onClick = { showTimePicker = true },
-            modifier = Modifier.padding(start = 8.dp),
+            onClick = { showDatePicker = true },
+            modifier = Modifier.padding(8.dp),
             shape = RoundedCornerShape(8.dp),
             colors = ButtonDefaults.buttonColors(containerColor = Color.Black)
         ) {
-            Text(
-                text = "Set Waktu",
-                color = Color.White
-            )
+            Text(text = "Set Tanggal & Waktu", color = Color.White)
         }
 
         Spacer(modifier = Modifier.height(32.dp))
 
-        // Menampilkan waktu yang dipilih
-        if (timeList.isNotEmpty()) {
+        if (scheduleList.isNotEmpty()) {
             Text(
-                text = "Waktu Terpilih:",
+                text = "Jadwal Terpilih:",
                 fontSize = 18.sp,
                 color = Color.Black,
                 modifier = Modifier.align(Alignment.Start)
             )
         }
 
-        // Menampilkan daftar waktu yang dipilih dalam grid (3 kolom)
         LazyVerticalGrid(
             columns = GridCells.Fixed(3),
             modifier = Modifier.fillMaxWidth(),
             contentPadding = PaddingValues(8.dp)
         ) {
-            items(timeList.size) { index ->
+            items(scheduleList.size) { index ->
                 TimeCard(
-                    time = timeList[index],
+                    time = scheduleList[index],
                     onEdit = {
-                        editingTimeIndex = index
-                        showTimePicker = true
+                        editingIndex = index
+                        val parts = scheduleList[index].split(" ")
+                        val day = parts[1].toInt() // Tanggal
+                        val timeParts = parts[2].split(":")
+                        val hour = timeParts[0].toInt()
+                        val minute = timeParts[1].toInt()
+
+                        // Gunakan tanggal default untuk bulan dan tahun
+                        selectedDate = LocalDate.of(LocalDate.now().year, LocalDate.now().month, day)
+                        selectedTime = LocalTime.of(hour, minute)
+                        showDatePicker = true
                     }
                 )
             }
         }
     }
 
-    // Dialog TimePicker
+    if (showDatePicker) {
+        val current = Calendar.getInstance()
+        DatePickerDialog(
+            LocalContext.current,
+            { _, year, month, dayOfMonth ->
+                selectedDate = LocalDate.of(year, month + 1, dayOfMonth)
+                showDatePicker = false
+                showTimePicker = true
+            },
+            selectedDate?.year ?: current.get(Calendar.YEAR),
+            selectedDate?.monthValue?.minus(1) ?: current.get(Calendar.MONTH),
+            selectedDate?.dayOfMonth ?: current.get(Calendar.DAY_OF_MONTH)
+        ).show()
+    }
+
     if (showTimePicker) {
         TimePickerDialog(
             onDismissRequest = { showTimePicker = false },
             onTimeSelected = { time ->
-                // Update waktu yang ada jika sedang dalam mode edit
-                if (editingTimeIndex != null) {
-                    timeList[editingTimeIndex ?: 0] = time.format(DateTimeFormatter.ofPattern("HH:mm"))
-                } else {
-                    // Menambah waktu baru jika tidak dalam mode edit
-                    timeList.add(time.format(DateTimeFormatter.ofPattern("HH:mm")))
+                selectedTime = time
+                if (selectedDate != null && selectedTime != null) {
+                    val dateTime = LocalDateTime.of(selectedDate, selectedTime)
+                    val formatted = dateTime.format(DateTimeFormatter.ofPattern("EEEE, dd HH:mm"))
+                    if (editingIndex != null) {
+                        scheduleList[editingIndex!!] = formatted
+                    } else {
+                        scheduleList.add(formatted)
+                    }
+                    editingIndex = null
                 }
                 showTimePicker = false
-                editingTimeIndex = null
             }
         )
     }
@@ -145,19 +167,12 @@ fun TimeCard(time: String, onEdit: () -> Unit) {
             .padding(4.dp)
             .fillMaxWidth()
             .height(50.dp)
-            .clickable(onClick = onEdit), // Ubah menjadi clickable untuk mengedit waktu
+            .clickable(onClick = onEdit),
         shape = RoundedCornerShape(8.dp),
         colors = CardDefaults.cardColors(containerColor = Color.LightGray)
     ) {
-        Box(
-            contentAlignment = Alignment.Center,
-            modifier = Modifier.fillMaxSize()
-        ) {
-            Text(
-                text = time,
-                fontSize = 16.sp,
-                color = Color.Black
-            )
+        Box(contentAlignment = Alignment.Center, modifier = Modifier.fillMaxSize()) {
+            Text(text = time, fontSize = 16.sp, color = Color.Black)
         }
     }
 }
@@ -173,39 +188,24 @@ fun TimePickerDialog(
 
     AlertDialog(
         onDismissRequest = onDismissRequest,
-        title = {
-            Text("Pilih Waktu")
-        },
+        title = { Text("Pilih Waktu") },
         text = {
-            Column(
-                horizontalAlignment = Alignment.CenterHorizontally
-            ) {
+            Column(horizontalAlignment = Alignment.CenterHorizontally) {
                 Row {
                     Text("Jam: ")
-                    NumberPicker(
-                        value = hour,
-                        onValueChange = { hour = it },
-                        range = 0..23
-                    )
+                    NumberPicker(value = hour, onValueChange = { hour = it }, range = 0..23)
                 }
                 Row {
                     Text("Menit: ")
-                    NumberPicker(
-                        value = minute,
-                        onValueChange = { minute = it },
-                        range = 0..59
-                    )
+                    NumberPicker(value = minute, onValueChange = { minute = it }, range = 0..59)
                 }
             }
         },
         confirmButton = {
-            Button(
-                onClick = {
-                    // Membuat LocalTime menggunakan hour dan minute
-                    onTimeSelected(LocalTime.of(hour, minute))
-                    onDismissRequest()
-                }
-            ) {
+            Button(onClick = {
+                onTimeSelected(LocalTime.of(hour, minute))
+                onDismissRequest()
+            }) {
                 Text("Set Waktu")
             }
         },
@@ -219,9 +219,7 @@ fun TimePickerDialog(
 
 @Composable
 fun NumberPicker(value: Int, onValueChange: (Int) -> Unit, range: IntRange) {
-    Row(
-        verticalAlignment = Alignment.CenterVertically
-    ) {
+    Row(verticalAlignment = Alignment.CenterVertically) {
         Button(onClick = { if (value > range.first) onValueChange(value - 1) }) {
             Text("-")
         }
@@ -234,11 +232,4 @@ fun NumberPicker(value: Int, onValueChange: (Int) -> Unit, range: IntRange) {
             Text("+")
         }
     }
-}
-
-@RequiresApi(Build.VERSION_CODES.O)
-@Preview
-@Composable
-fun PreviewTeacherScheduleScreen() {
-    TeacherScheduleScreen()
 }
