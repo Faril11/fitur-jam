@@ -48,6 +48,7 @@ fun TeacherScheduleScreen() {
     var showTimePicker by remember { mutableStateOf(false) }
     var scheduleList = remember { mutableStateListOf<String>() }
     var editingIndex by remember { mutableStateOf<Int?>(null) }
+    var showActionDialog by remember { mutableStateOf<Int?>(null) }
 
     Column(
         modifier = Modifier
@@ -106,53 +107,87 @@ fun TeacherScheduleScreen() {
             items(scheduleList.size) { index ->
                 TimeCard(
                     time = scheduleList[index],
-                    onEdit = {
-                        editingIndex = index
-                        val parts = scheduleList[index].split(" ")
-                        val day = parts[1].toInt() // Tanggal
-                        val timeParts = parts[2].split(":")
-                        val hour = timeParts[0].toInt()
-                        val minute = timeParts[1].toInt()
-
-                        // Gunakan tanggal default untuk bulan dan tahun
-                        selectedDate = LocalDate.of(LocalDate.now().year, LocalDate.now().month, day)
-                        selectedTime = LocalTime.of(hour, minute)
-                        showDatePicker = true
-                    }
+                    onEdit = { showActionDialog = index }
                 )
             }
         }
     }
 
+    if (showActionDialog != null) {
+        AlertDialog(
+            onDismissRequest = { showActionDialog = null },
+            title = { Text("Pilih Aksi") },
+            text = {
+                Column {
+                    TextButton(onClick = {
+                        editingIndex = showActionDialog
+                        val parts = scheduleList[showActionDialog!!].split(" ")
+                        val day = parts[1].toInt() // Tanggal
+                        val timeParts = parts[2].split(":")
+                        val hour = timeParts[0].toInt()
+                        val minute = timeParts[1].toInt()
+
+                        selectedDate = LocalDate.of(LocalDate.now().year, LocalDate.now().month, day)
+                        selectedTime = LocalTime.of(hour, minute)
+                        showDatePicker = true
+                        showActionDialog = null
+                    }) {
+                        Text("Ubah Tanggal & Waktu")
+                    }
+                    TextButton(onClick = {
+                        scheduleList.removeAt(showActionDialog!!)
+                        showActionDialog = null
+                    }) {
+                        Text("Hapus Tanggal & Waktu")
+                    }
+                }
+            },
+            confirmButton = {},
+            dismissButton = {
+                Button(onClick = { showActionDialog = null }) {
+                    Text("Batal")
+                }
+            }
+        )
+    }
+
     if (showDatePicker) {
         val current = Calendar.getInstance()
-        DatePickerDialog(
+        val minDate = current.timeInMillis
+        val datePickerDialog = DatePickerDialog(
             LocalContext.current,
             { _, year, month, dayOfMonth ->
-                selectedDate = LocalDate.of(year, month + 1, dayOfMonth)
-                showDatePicker = false
-                showTimePicker = true
+                val selected = LocalDate.of(year, month + 1, dayOfMonth)
+                if (!selected.isBefore(LocalDate.now())) {
+                    selectedDate = selected
+                    showDatePicker = false
+                    showTimePicker = true
+                }
             },
             selectedDate?.year ?: current.get(Calendar.YEAR),
             selectedDate?.monthValue?.minus(1) ?: current.get(Calendar.MONTH),
             selectedDate?.dayOfMonth ?: current.get(Calendar.DAY_OF_MONTH)
-        ).show()
+        )
+        datePickerDialog.datePicker.minDate = minDate
+        datePickerDialog.show()
     }
 
     if (showTimePicker) {
         TimePickerDialog(
             onDismissRequest = { showTimePicker = false },
             onTimeSelected = { time ->
-                selectedTime = time
-                if (selectedDate != null && selectedTime != null) {
-                    val dateTime = LocalDateTime.of(selectedDate, selectedTime)
-                    val formatted = dateTime.format(DateTimeFormatter.ofPattern("EEEE, dd HH:mm"))
-                    if (editingIndex != null) {
-                        scheduleList[editingIndex!!] = formatted
-                    } else {
-                        scheduleList.add(formatted)
+                if (time.hour in 8..16) { // Membatasi jam dari 08:00 sampai 17:00
+                    selectedTime = time
+                    if (selectedDate != null && selectedTime != null) {
+                        val dateTime = LocalDateTime.of(selectedDate, selectedTime)
+                        val formatted = dateTime.format(DateTimeFormatter.ofPattern("EEEE, dd HH:mm"))
+                        if (editingIndex != null) {
+                            scheduleList[editingIndex!!] = formatted
+                        } else {
+                            scheduleList.add(formatted)
+                        }
+                        editingIndex = null
                     }
-                    editingIndex = null
                 }
                 showTimePicker = false
             }
@@ -183,7 +218,7 @@ fun TimePickerDialog(
     onDismissRequest: () -> Unit,
     onTimeSelected: (LocalTime) -> Unit
 ) {
-    var hour by remember { mutableStateOf(0) }
+    var hour by remember { mutableStateOf(8) } // Default jam 08:00
     var minute by remember { mutableStateOf(0) }
 
     AlertDialog(
@@ -193,7 +228,7 @@ fun TimePickerDialog(
             Column(horizontalAlignment = Alignment.CenterHorizontally) {
                 Row {
                     Text("Jam: ")
-                    NumberPicker(value = hour, onValueChange = { hour = it }, range = 0..23)
+                    NumberPicker(value = hour, onValueChange = { hour = it }, range = 8..16) // Membatasi jam dari 08:00 sampai 17:00
                 }
                 Row {
                     Text("Menit: ")
